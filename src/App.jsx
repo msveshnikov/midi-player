@@ -128,8 +128,7 @@ const MidiPlayerComponent = () => {
                 break;
         }
     }, []); // Dependencies are correct
-
-    // --- Effect for Initializing/Resetting Player (Minor Tweak Attempt) ---
+    // --- Effect for Initializing/Resetting Player (SIMPLIFIED INITIALIZATION) ---
     useEffect(() => {
         const cleanup = () => {
             if (player) {
@@ -153,28 +152,28 @@ const MidiPlayerComponent = () => {
 
         const reader = new FileReader();
 
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
+            // Make async to await resumeAudioContext
             try {
                 console.log("MIDI Player: FileReader onload - initializing MidiPlayer...");
-                const ac = getAudioContext();
+                // Ensure context is ready before Player potentially uses it implicitly
+                const ac = await resumeAudioContext();
                 if (!ac) {
                     throw new Error("AudioContext not available for MIDI Player");
                 }
+                console.log(`MIDI Player: AudioContext state before player init: ${ac.state}`);
 
-                const newPlayer = new MidiPlayer.Player(playerEventHandler, {
-                    audioContext: ac,
-                    soundfont: Soundfont, // Pass the imported Soundfont object
-                    // ***** TRY FORCING FluidR3_GM *****
-                    // Note: The URL must point to the *directory* containing instrument JS files.
-                    soundFontUrl: "https://raw.githubusercontent.com/gleitz/midi-js-soundfonts/gh-pages/FluidR3_GM/",
-                });
-                console.log(
-                    "MIDI Player: Instance created with AudioContext, Soundfont object, and FluidR3_GM SoundFontUrl."
-                );
+                // ***** REMOVE ALL OPTIONS - LET midi-player-js AUTO-DETECT soundfont-player *****
+                const newPlayer = new MidiPlayer.Player(playerEventHandler);
+                console.log("MIDI Player: Instance created WITHOUT explicit options (using auto-detection).");
 
                 // Load the ArrayBuffer AFTER creating the player instance
                 newPlayer.loadArrayBuffer(e.target.result);
                 console.log("MIDI Player: ArrayBuffer loaded.");
+
+                // Give it a tiny moment in case internal async loading needs to start
+                // This is a guess, but sometimes helps race conditions.
+                await new Promise((resolve) => setTimeout(resolve, 100));
 
                 setPlayer(newPlayer);
                 setIsPlaying(false);
@@ -184,7 +183,7 @@ const MidiPlayerComponent = () => {
                 setError(`Error initializing player: ${err?.message || err}`);
                 setPlayer(null);
             } finally {
-                setIsLoading(false);
+                setIsLoading(false); // Ensure loading state is always reset
             }
         };
 
