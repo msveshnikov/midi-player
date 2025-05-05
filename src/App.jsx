@@ -1,71 +1,112 @@
 // src/components/MidiPlayerComponent.jsx
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import MidiPlayer from 'midi-player-js';
-import Soundfont from 'soundfont-player'; // Import Soundfont directly
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import MidiPlayer from "midi-player-js";
+import Soundfont from "soundfont-player"; // ***** IMPORT THIS *****
 
-// --- Global variable to hold the AudioContext ---
-// We only want one AudioContext instance for the lifetime of the app window.
+// --- AudioContext Management (Keep as before) ---
 let audioContext = null;
 const getAudioContext = () => {
     if (!audioContext) {
-        console.log('Creating new AudioContext');
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        console.log("Creating new AudioContext");
+        // Check for existence first (useful for React StrictMode double-invokes)
+        audioContext = window.reactMidiAudioContext || new (window.AudioContext || window.webkitAudioContext)();
+        window.reactMidiAudioContext = audioContext; // Store globally if needed
     }
     return audioContext;
 };
-
-// Function to resume AudioContext on user interaction
 const resumeAudioContext = async () => {
     const ac = getAudioContext();
-    if (ac.state === 'suspended') {
-        console.log('Resuming AudioContext...');
+    if (ac && ac.state === "suspended") {
+        console.log("Resuming AudioContext...");
         try {
             await ac.resume();
-            console.log('AudioContext Resumed.');
+            console.log("AudioContext Resumed.");
         } catch (err) {
             console.error("Error resuming AudioContext:", err);
         }
     }
+    return ac; // Return the context
 };
 
-
 const MidiPlayerComponent = () => {
-    // State variables
+    // --- State Variables (Add one for the test button) ---
     const [midiFile, setMidiFile] = useState(null);
-    const [fileName, setFileName] = useState('');
+    const [fileName, setFileName] = useState("");
     const [player, setPlayer] = useState(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
+    const [error, setError] = useState("");
+    const [isSoundfontTestLoading, setIsSoundfontTestLoading] = useState(false); // State for test button
 
-    // Refs for state setters (good practice)
+    // Ref for state setters (Keep as before)
     const stateRefs = useRef();
     stateRefs.current = { setIsPlaying, setError };
 
-    // Event Handler for MidiPlayer
-    const playerEventHandler = useCallback((event) => {
-        // Optional: Add more detailed logging if needed
-        // console.log('MIDI Event:', event);
+    // --- Direct Soundfont Test Function ---
+    const handleTestSoundfont = async () => {
+        setError("");
+        setIsSoundfontTestLoading(true);
+        console.log("[Soundfont Test] Starting...");
+        try {
+            const ac = await resumeAudioContext(); // Ensure context is ready and resumed
+            if (!ac) {
+                throw new Error("AudioContext could not be initialized.");
+            }
+            console.log(`[Soundfont Test] Using AudioContext state: ${ac.state}`);
 
+            // Load the instrument directly using soundfont-player
+            // Using 'acoustic_grand_piano' as it's common and likely downloaded
+            const piano = await Soundfont.instrument(ac, "acoustic_grand_piano", {
+                // soundfont: 'FluidR3_GM' // Optional: Try forcing a different soundfont if default fails
+                // gain: 1 // Optional: adjust volume
+            });
+
+            console.log("[Soundfont Test] Instrument loaded.");
+
+            // Play a single note (e.g., C4 - Middle C)
+            console.log("[Soundfont Test] Playing test note (C4)...");
+            piano.play("C4"); // Returns an ActiveAudioNode object, can be stopped etc.
+
+            // Optionally schedule another note slightly later
+            // setTimeout(() => {
+            //     console.log('[Soundfont Test] Playing test note (G4)...');
+            //     piano.play('G4');
+            // }, 800);
+
+            // Note: Sound will play immediately. No need to set loading false instantly unless
+            // you want the button re-enabled right away.
+            setIsSoundfontTestLoading(false); // Re-enable button
+            console.log("[Soundfont Test] Test complete.");
+        } catch (err) {
+            console.error("[Soundfont Test] Error:", err);
+            setError(`Soundfont test error: ${err?.message || err}`);
+            setIsSoundfontTestLoading(false);
+        }
+    };
+
+    // --- Event Handler for MidiPlayer (Keep as before) ---
+    const playerEventHandler = useCallback((event) => {
+        // console.log('MIDI Event:', event.name); // Reduce logging noise unless debugging events
         switch (event.name) {
-            case 'End of File':
-                console.log('Playback finished.');
+            case "End of File":
+                console.log("MIDI Player: Playback finished.");
                 stateRefs.current.setIsPlaying(false);
                 break;
-            case 'Note on':
-                // console.log('Note On:', event.noteName, event.velocity);
+            case "Note on":
+                // You *should* hear sound correlating with these if things work
+                // console.log('MIDI Player: Note On', event.noteName);
                 break;
-            // Add more cases if needed
+            // ... other events
             default:
                 break;
         }
-    }, []); // Empty dependency array is correct here due to using refs
+    }, []);
 
-    // Effect for Initializing/Resetting Player
+    // --- Effect for Initializing/Resetting Player (Minor Tweak Attempt) ---
     useEffect(() => {
         const cleanup = () => {
             if (player) {
-                console.log('Stopping and cleaning up player.');
+                console.log("MIDI Player: Stopping and cleaning up instance.");
                 player.stop();
                 setPlayer(null);
                 setIsPlaying(false);
@@ -75,100 +116,83 @@ const MidiPlayerComponent = () => {
         if (!midiFile) {
             cleanup();
             setIsLoading(false);
-            setFileName('');
+            setFileName("");
             return;
         }
 
         setIsLoading(true);
-        setError('');
+        setError("");
         setFileName(midiFile.name);
 
         const reader = new FileReader();
 
         reader.onload = (e) => {
             try {
-                console.log('FileReader onload - initializing MidiPlayer...');
-                // Ensure AudioContext is available before creating the player
-                // It might still be suspended, but it needs to exist.
-                getAudioContext();
+                console.log("MIDI Player: FileReader onload - initializing MidiPlayer...");
+                const ac = getAudioContext(); // Get context FIRST
+                if (!ac) {
+                    throw new Error("AudioContext not available for MIDI Player");
+                }
 
-                const newPlayer = new MidiPlayer.Player(playerEventHandler);
+                // Explicitly pass the AudioContext if the library supports it
+                // Looking at midi-player-js source, it DOES look for options.audioContext
+                // and options.soundfont (the Soundfont object itself)
+                const newPlayer = new MidiPlayer.Player(playerEventHandler, {
+                    // ***** TRY PASSING THESE OPTIONS *****
+                    audioContext: ac,
+                    soundfont: Soundfont, // Pass the imported Soundfont object
+                });
+                console.log("MIDI Player: Instance created with AudioContext and Soundfont object.");
 
-                // IMPORTANT: Pass the AudioContext to the Player's options
-                // While not explicitly documented for MidiPlayer itself,
-                // it often passes options down to SoundfontPlayer or uses a shared context.
-                // Let's also try initializing Soundfont explicitly first.
-                // This doesn't hurt and might help underlying mechanisms.
-                Soundfont.instrument(getAudioContext(), 'acoustic_grand_piano')
-                  .then(() => {
-                      console.log('Dummy instrument load ok (ensures Soundfont is warm).');
+                // Load the ArrayBuffer AFTER creating the player instance
+                newPlayer.loadArrayBuffer(e.target.result);
+                console.log("MIDI Player: ArrayBuffer loaded.");
 
-                      // Now load the MIDI data
-                      newPlayer.loadArrayBuffer(e.target.result);
-                      console.log('MIDI ArrayBuffer loaded.');
-
-                      setPlayer(newPlayer);
-                      setIsPlaying(false);
-                      setError('');
-                      setIsLoading(false); // Loading finished
-                  })
-                  .catch(err => {
-                    console.error("Error pre-warming Soundfont:", err);
-                    // Proceed anyway, maybe it works without pre-warming
-                    // but set an error message
-                    newPlayer.loadArrayBuffer(e.target.result);
-                    console.log('MIDI ArrayBuffer loaded (Soundfont pre-warm failed).');
-                    setPlayer(newPlayer);
-                    setIsPlaying(false);
-                    setError(`Soundfont init error: ${err?.message || err}. Playback might fail.`);
-                    setIsLoading(false); // Loading finished
-                  });
-
+                setPlayer(newPlayer);
+                setIsPlaying(false);
+                setError("");
             } catch (err) {
-                console.error("Error initializing MIDI player:", err);
+                console.error("MIDI Player: Error initializing:", err);
                 setError(`Error initializing player: ${err?.message || err}`);
                 setPlayer(null);
-                setIsLoading(false);
+            } finally {
+                setIsLoading(false); // Ensure loading state is always reset
             }
-            // Removed finally block here, moved setIsLoading(false) inside the promise/catch
         };
 
         reader.onerror = (e) => {
-            console.error("Error reading MIDI file:", e);
-            setError('Error reading the MIDI file.');
+            console.error("MIDI Player: Error reading file:", e);
+            setError("Error reading the MIDI file.");
             setIsLoading(false);
             setPlayer(null);
-            setFileName('');
+            setFileName("");
         };
 
         reader.readAsArrayBuffer(midiFile);
 
         return cleanup;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [midiFile, playerEventHandler]); // playerEventHandler is stable
+    }, [midiFile, playerEventHandler]); // Dependencies are correct
 
-    // --- File Input Handler ---
+    // --- File Input Handler (Keep as is) ---
     const handleFileChange = async (event) => {
-        // Try to resume audio context on file selection too (good practice)
-        await resumeAudioContext();
-
+        await resumeAudioContext(); // Good place to resume
         const file = event.target.files?.[0];
+        // ... (rest of file handling logic is fine) ...
         if (file) {
-             const validTypes = ['audio/midi', 'audio/mid', 'audio/x-midi'];
-             const validExtensions = ['.mid', '.midi'];
-             const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-
+            const validTypes = ["audio/midi", "audio/mid", "audio/x-midi"];
+            const validExtensions = [".mid", ".midi"];
+            const fileExtension = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
             if (validTypes.includes(file.type) || validExtensions.includes(fileExtension)) {
                 setMidiFile(file);
-                setError('');
+                setError("");
             } else {
                 setMidiFile(null);
-                setFileName('');
-                setError('Please select a valid MIDI file (.mid, .midi)');
-             }
+                setFileName("");
+                setError("Please select a valid MIDI file (.mid, .midi)");
+            }
         } else {
             setMidiFile(null);
-            setFileName('');
+            setFileName("");
         }
         if (event.target) {
             event.target.value = null;
@@ -177,139 +201,111 @@ const MidiPlayerComponent = () => {
 
     // --- Playback Controls ---
     const handlePlay = async () => {
-        // *** Crucial: Resume AudioContext on Play attempt ***
-        await resumeAudioContext();
-
+        await resumeAudioContext(); // Resume before playing
         if (player && !isPlaying) {
-            console.log("Attempting player.play()...");
+            console.log("MIDI Player: Attempting player.play()...");
             try {
                 player.play();
                 setIsPlaying(true);
-                setError('');
-                console.log("Player is now playing.");
+                setError("");
+                console.log("MIDI Player: play() called, should be playing.");
             } catch (err) {
-                console.error("Error during player.play():", err);
+                console.error("MIDI Player: Error during player.play():", err);
                 setError(`Playback error: ${err?.message || err}`);
-                setIsPlaying(false); // Ensure state reflects failure
+                setIsPlaying(false);
             }
         } else {
-             console.log("Play ignored:", !player ? "No player" : "Already playing");
+            console.log("MIDI Player: Play ignored:", !player ? "No player" : "Already playing");
         }
     };
 
     const handlePause = () => {
-        if (player && isPlaying) {
-            console.log("Attempting player.pause()...");
+        /* (Keep as is) */ if (player && isPlaying) {
             player.pause();
             setIsPlaying(false);
-            console.log("Player paused.");
+            console.log("MIDI Player: Paused.");
         }
     };
-
     const handleStop = () => {
-        if (player) {
-            console.log("Attempting player.stop()...");
+        /* (Keep as is) */ if (player) {
             player.stop();
             setIsPlaying(false);
-            console.log("Player stopped.");
+            console.log("MIDI Player: Stopped.");
         }
     };
 
-    // --- Render Component ---
+    // --- Render Component (Add the test button) ---
     return (
         <div style={styles.container}>
             <h2 style={styles.title}>React MIDI Player</h2>
+
+            {/* --- Add the Test Button Here --- */}
+            <button
+                onClick={handleTestSoundfont}
+                disabled={isSoundfontTestLoading}
+                style={{
+                    ...styles.button,
+                    marginBottom: "15px",
+                    display: "block",
+                    width: "100%",
+                    backgroundColor: "#e0f7fa",
+                }}
+            >
+                {isSoundfontTestLoading ? "Testing Soundfont..." : "Test Soundfont (Play C4)"}
+            </button>
+            {/* --- End Test Button --- */}
 
             <input
                 type="file"
                 accept=".mid,.midi,audio/midi,audio/mid,audio/x-midi"
                 onChange={handleFileChange}
-                disabled={isLoading}
+                disabled={isLoading || isSoundfontTestLoading} // Also disable during test
                 style={styles.input}
             />
 
             {fileName && <p style={styles.fileName}>Loaded: {fileName}</p>}
-
             {isLoading && <p style={styles.loading}>Loading MIDI & instruments...</p>}
-
             {error && <p style={styles.error}>Error: {error}</p>}
 
             <div style={styles.controls}>
-                <button
-                    onClick={handlePlay}
-                    disabled={!player || isPlaying || isLoading}
-                    style={styles.button}
-                >
-                    Play
+                <button onClick={handlePlay} disabled={!player || isPlaying || isLoading} style={styles.button}>
+                    Play MIDI
                 </button>
-                <button
-                    onClick={handlePause}
-                    disabled={!player || !isPlaying || isLoading}
-                    style={styles.button}
-                >
-                    Pause
+                <button onClick={handlePause} disabled={!player || !isPlaying || isLoading} style={styles.button}>
+                    Pause MIDI
                 </button>
-                <button
-                    onClick={handleStop}
-                    disabled={!player || isLoading}
-                    style={styles.button}
-                >
-                    Stop
+                <button onClick={handleStop} disabled={!player || isLoading} style={styles.button}>
+                    Stop MIDI
                 </button>
             </div>
         </div>
     );
 };
 
-// Basic styling (keep as is)
+// --- Styles (Keep as is) ---
 const styles = {
     container: {
-        fontFamily: 'sans-serif',
-        padding: '20px',
-        border: '1px solid #ccc',
-        borderRadius: '8px',
-        maxWidth: '500px',
-        margin: '20px auto',
-        backgroundColor: '#f9f9f9',
+        fontFamily: "sans-serif",
+        padding: "20px",
+        border: "1px solid #ccc",
+        borderRadius: "8px",
+        maxWidth: "500px",
+        margin: "20px auto",
+        backgroundColor: "#f9f9f9",
     },
-    title: {
-        textAlign: 'center',
-        color: '#333',
-        marginBottom: '20px',
-    },
-    input: {
-        display: 'block',
-        marginBottom: '15px',
-    },
-    fileName: {
-        fontStyle: 'italic',
-        color: '#555',
-        marginBottom: '10px',
-        wordBreak: 'break-all',
-    },
-    loading: {
-        color: 'orange',
-        fontWeight: 'bold',
-    },
-    error: {
-        color: 'red',
-        fontWeight: 'bold',
-        marginTop: '10px',
-        wordBreak: 'break-word',
-    },
-    controls: {
-        marginTop: '20px',
-        display: 'flex',
-        gap: '10px',
-        justifyContent: 'center',
-    },
+    title: { textAlign: "center", color: "#333", marginBottom: "20px" },
+    input: { display: "block", marginBottom: "15px", width: "calc(100% - 10px)" }, // Adjust width slightly
+    fileName: { fontStyle: "italic", color: "#555", marginBottom: "10px", wordBreak: "break-all" },
+    loading: { color: "orange", fontWeight: "bold" },
+    error: { color: "red", fontWeight: "bold", marginTop: "10px", wordBreak: "break-word" },
+    controls: { marginTop: "20px", display: "flex", gap: "10px", justifyContent: "center" },
     button: {
-        padding: '8px 15px',
-        fontSize: '1em',
-        cursor: 'pointer',
-        borderRadius: '4px',
-        border: '1px solid #ccc',
-        backgroundColor: '#eee',
+        padding: "8px 15px",
+        fontSize: "1em",
+        cursor: "pointer",
+        borderRadius: "4px",
+        border: "1px solid #ccc",
+        backgroundColor: "#eee",
     },
 };
 
