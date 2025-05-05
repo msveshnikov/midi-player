@@ -95,13 +95,19 @@ const MidiPlayerComponent = () => {
             const ac = await resumeAudioContext();
             if (!ac) throw new Error("AudioContext not available");
 
+            // Preload the default piano instrument
+            await loadInstrument("acoustic_grand_piano", ac);
+
             // Create our soundfont output handler
             return {
                 playNote: async (note, channel) => {
                     try {
-                        // Default to piano for now, properly we'd map channel to instrument
+                        // For MIDI channel 10 (index 9) use percussion, otherwise piano
                         const instrumentName = channel === 9 ? "percussion" : "acoustic_grand_piano";
-                        const instrument = await loadInstrument(instrumentName, ac);
+
+                        // Get the instrument from our cache
+                        const instrument =
+                            instrumentsRef.current[instrumentName] || (await loadInstrument(instrumentName, ac));
 
                         if (note && instrument) {
                             console.log(`Playing note: ${note} on channel: ${channel}`);
@@ -201,10 +207,15 @@ const MidiPlayerComponent = () => {
                 // Create our soundfont output
                 const soundfontOutput = await createSoundfontOutput();
 
-                // Create player with our soundfont output
-                const newPlayer = new MidiPlayer.Player(playerEventHandler);
-                // Connect our output to the player
-                newPlayer.setOutput(soundfontOutput);
+                // Create player with our soundfont output connected via event handler
+                const newPlayer = new MidiPlayer.Player((event) => {
+                    // Handle MIDI events and route to our custom output
+                    if (event.name === "Note on" && event.velocity > 0) {
+                        soundfontOutput.playNote(event.noteName, event.channel);
+                    }
+                    // Also call the original event handler for logging
+                    playerEventHandler(event);
+                });
 
                 console.log("MIDI Player: Instance created with custom Soundfont output.");
 
@@ -238,8 +249,7 @@ const MidiPlayerComponent = () => {
         reader.readAsArrayBuffer(midiFile);
 
         return cleanup;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [midiFile, playerEventHandler, createSoundfontOutput]);
+    }, [midiFile, createSoundfontOutput,  playerEventHandler]);
 
     // --- File Input Handler ---
     const handleFileChange = async (event) => {
