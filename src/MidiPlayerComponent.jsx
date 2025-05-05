@@ -272,8 +272,8 @@ const MidiPlayerComponent = () => {
                     const gain = velocity / 127; // Basic velocity mapping
                     const playingNode = instrument.play(noteName, ac.currentTime, { gain: gain });
                     // Store active note if needed (e.g., for explicit stop)
-                    // const noteId = `${channel}-${noteName}`;
-                    // activeNotesRef.current[noteId] = playingNode;
+                    const noteId = `${channel}-${noteName}`;
+                    activeNotesRef.current[noteId] = playingNode;
                 } catch (err) {
                     console.error(`Error playing note ${noteName} on channel ${channel} with ${instrumentName}:`, err);
                 }
@@ -351,10 +351,10 @@ const MidiPlayerComponent = () => {
                 // activeNotesRef.current = {};
                 break;
             // Add cases for other events if needed (Pitch Bend, Control Change, etc.)
-            case 'Pitch Bend':
+            case "Pitch Bend":
                 soundfontOutputRef.current.pitchBend(event.channel, event.value);
                 break;
-            case 'Controller Change': // or specific CC events
+            case "Controller Change": // or specific CC events
                 soundfontOutputRef.current.controlChange(event.channel, event.controllerNumber, event.value);
                 break;
             default:
@@ -455,7 +455,7 @@ const MidiPlayerComponent = () => {
         // Return the cleanup function to be executed when the component unmounts
         // or when midiFile changes (triggering the effect again)
         return cleanup;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [midiFile, midiEventHandler, createSoundfontOutput]); // Dependencies: effect runs if these change
 
     // --- File Input Handler ---
