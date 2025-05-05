@@ -1,4 +1,3 @@
-// src/components/MidiPlayerComponent.jsx
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import MidiPlayer from "midi-player-js";
 import Soundfont from "soundfont-player";
@@ -36,23 +35,190 @@ const MidiPlayerComponent = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
     const [isSoundfontTestLoading, setIsSoundfontTestLoading] = useState(false);
-
     // --- Refs for accessing instruments and state ---
     const stateRefs = useRef();
     stateRefs.current = { setIsPlaying, setError };
-    const instrumentsRef = useRef({});
+    const instrumentsRef = useRef({}); // src/components/MidiPlayerComponent.jsx
+
+    // Channel to instrument mapping
+    const channelInstrumentsRef = useRef({});
+
+    // Map GM instrument numbers to soundfont names
+    const getInstrumentName = (programNumber) => {
+        // General MIDI instrument map (0-127)
+        const gmInstruments = [
+            // Piano (0-7)
+            "acoustic_grand_piano",
+            "bright_acoustic_piano",
+            "electric_grand_piano",
+            "honkytonk_piano",
+            "electric_piano_1",
+            "electric_piano_2",
+            "harpsichord",
+            "clavinet",
+            // Chromatic Percussion (8-15)
+            "celesta",
+            "glockenspiel",
+            "music_box",
+            "vibraphone",
+            "marimba",
+            "xylophone",
+            "tubular_bells",
+            "dulcimer",
+            // Organ (16-23)
+            "drawbar_organ",
+            "percussive_organ",
+            "rock_organ",
+            "church_organ",
+            "reed_organ",
+            "accordion",
+            "harmonica",
+            "tango_accordion",
+            // Guitar (24-31)
+            "acoustic_guitar_nylon",
+            "acoustic_guitar_steel",
+            "electric_guitar_jazz",
+            "electric_guitar_clean",
+            "electric_guitar_muted",
+            "overdriven_guitar",
+            "distortion_guitar",
+            "guitar_harmonics",
+            // Bass (32-39)
+            "acoustic_bass",
+            "electric_bass_finger",
+            "electric_bass_pick",
+            "fretless_bass",
+            "slap_bass_1",
+            "slap_bass_2",
+            "synth_bass_1",
+            "synth_bass_2",
+            // Strings (40-47)
+            "violin",
+            "viola",
+            "cello",
+            "contrabass",
+            "tremolo_strings",
+            "pizzicato_strings",
+            "orchestral_harp",
+            "timpani",
+            // Ensemble (48-55)
+            "string_ensemble_1",
+            "string_ensemble_2",
+            "synth_strings_1",
+            "synth_strings_2",
+            "choir_aahs",
+            "voice_oohs",
+            "synth_choir",
+            "orchestra_hit",
+            // Brass (56-63)
+            "trumpet",
+            "trombone",
+            "tuba",
+            "muted_trumpet",
+            "french_horn",
+            "brass_section",
+            "synth_brass_1",
+            "synth_brass_2",
+            // Reed (64-71)
+            "soprano_sax",
+            "alto_sax",
+            "tenor_sax",
+            "baritone_sax",
+            "oboe",
+            "english_horn",
+            "bassoon",
+            "clarinet",
+            // Pipe (72-79)
+            "piccolo",
+            "flute",
+            "recorder",
+            "pan_flute",
+            "blown_bottle",
+            "shakuhachi",
+            "whistle",
+            "ocarina",
+            // Synth Lead (80-87)
+            "lead_1_square",
+            "lead_2_sawtooth",
+            "lead_3_calliope",
+            "lead_4_chiff",
+            "lead_5_charang",
+            "lead_6_voice",
+            "lead_7_fifths",
+            "lead_8_bass_lead",
+            // Synth Pad (88-95)
+            "pad_1_new_age",
+            "pad_2_warm",
+            "pad_3_polysynth",
+            "pad_4_choir",
+            "pad_5_bowed",
+            "pad_6_metallic",
+            "pad_7_halo",
+            "pad_8_sweep",
+            // Synth Effects (96-103)
+            "fx_1_rain",
+            "fx_2_soundtrack",
+            "fx_3_crystal",
+            "fx_4_atmosphere",
+            "fx_5_brightness",
+            "fx_6_goblins",
+            "fx_7_echoes",
+            "fx_8_sci_fi",
+            // Ethnic (104-111)
+            "sitar",
+            "banjo",
+            "shamisen",
+            "koto",
+            "kalimba",
+            "bagpipe",
+            "fiddle",
+            "shanai",
+            // Percussive (112-119)
+            "tinkle_bell",
+            "agogo",
+            "steel_drums",
+            "woodblock",
+            "taiko_drum",
+            "melodic_tom",
+            "synth_drum",
+            "reverse_cymbal",
+            // Sound Effects (120-127)
+            "guitar_fret_noise",
+            "breath_noise",
+            "seashore",
+            "bird_tweet",
+            "telephone_ring",
+            "helicopter",
+            "applause",
+            "gunshot",
+        ];
+
+        return gmInstruments[programNumber] || "acoustic_grand_piano";
+    };
 
     // --- Load Soundfont instruments ---
     const loadInstrument = async (instrument = "acoustic_grand_piano", ac) => {
         try {
             if (!instrumentsRef.current[instrument]) {
                 console.log(`Loading instrument: ${instrument}`);
-                instrumentsRef.current[instrument] = await Soundfont.instrument(ac, instrument);
-                console.log(`Instrument loaded: ${instrument}`);
+                try {
+                    instrumentsRef.current[instrument] = await Soundfont.instrument(ac, instrument);
+                    console.log(`Instrument loaded: ${instrument}`);
+                } catch (err) {
+                    console.error(`Failed to load instrument ${instrument}, falling back to piano:`, err);
+                    // If an instrument fails to load, fall back to piano (which should always work)
+                    if (instrument !== "acoustic_grand_piano") {
+                        instrumentsRef.current[instrument] =
+                            instrumentsRef.current["acoustic_grand_piano"] ||
+                            (await Soundfont.instrument(ac, "acoustic_grand_piano"));
+                    } else {
+                        throw err; // Re-throw if even piano fails
+                    }
+                }
             }
             return instrumentsRef.current[instrument];
         } catch (err) {
-            console.error(`Error loading instrument ${instrument}:`, err);
+            console.error(`Critical error loading instrument ${instrument}:`, err);
             throw err;
         }
     };
@@ -95,6 +261,12 @@ const MidiPlayerComponent = () => {
             const ac = await resumeAudioContext();
             if (!ac) throw new Error("AudioContext not available");
 
+            // Initialize default instruments for each channel (0-15)
+            // Channel 9 (index 10) is reserved for percussion in GM standard
+            for (let i = 0; i < 16; i++) {
+                channelInstrumentsRef.current[i] = i === 9 ? "percussion" : "acoustic_grand_piano";
+            }
+
             // Preload the default piano instrument
             await loadInstrument("acoustic_grand_piano", ac);
 
@@ -102,33 +274,42 @@ const MidiPlayerComponent = () => {
             return {
                 playNote: async (note, channel) => {
                     try {
-                        // For MIDI channel 10 (index 9) use percussion, otherwise piano
-                        const instrumentName = channel === 9 ? "percussion" : "acoustic_grand_piano";
+                        // Get the instrument assigned to this channel
+                        const instrumentName = channelInstrumentsRef.current[channel];
 
-                        // Get the instrument from our cache
+                        // Get the instrument from our cache or load it
                         const instrument =
                             instrumentsRef.current[instrumentName] || (await loadInstrument(instrumentName, ac));
 
                         if (note && instrument) {
-                            console.log(`Playing note: ${note} on channel: ${channel}`);
+                            console.log(
+                                `Playing note: ${note} on channel: ${channel} with instrument: ${instrumentName}`
+                            );
                             instrument.play(note);
                         }
                     } catch (err) {
-                        console.error(`Error playing note ${note}:`, err);
+                        console.error(`Error playing note ${note} on channel ${channel}:`, err);
                     }
                 },
-                stopNote: () => {
-                    // Can be implemented if needed
-                },
-                chordOn: () => {
-                    // Can be implemented if needed
-                },
-                chordOff: () => {
-                    // Can be implemented if needed
-                },
-                send: (data) => {
-                    // Handle program change and other MIDI messages if needed
-                    console.log("MIDI data:", data);
+
+                programChange: async (channel, program) => {
+                    try {
+                        // Skip percussion channel (9) as it's special in MIDI
+                        if (channel === 9) return;
+
+                        const instrumentName = getInstrumentName(program);
+                        console.log(
+                            `Program change on channel ${channel} to instrument ${program} (${instrumentName})`
+                        );
+
+                        // Update the channel's instrument
+                        channelInstrumentsRef.current[channel] = instrumentName;
+
+                        // Preload the instrument
+                        await loadInstrument(instrumentName, ac);
+                    } catch (err) {
+                        console.error(`Error changing program on channel ${channel}:`, err);
+                    }
                 },
             };
         } catch (err) {
