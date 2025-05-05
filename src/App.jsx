@@ -84,23 +84,50 @@ const MidiPlayerComponent = () => {
         }
     };
 
-    // --- Event Handler for MidiPlayer (Keep as before) ---
+    // --- Event Handler for MidiPlayer (Add detailed logging) ---
     const playerEventHandler = useCallback((event) => {
-        // console.log('MIDI Event:', event.name); // Reduce logging noise unless debugging events
+        // console.log('MIDI Event:', event); // Optional: Full event details
+
         switch (event.name) {
             case "End of File":
                 console.log("MIDI Player: Playback finished.");
                 stateRefs.current.setIsPlaying(false);
                 break;
+
+            // ***** ADD DETAILED LOGGING FOR NOTES *****
             case "Note on":
-                // You *should* hear sound correlating with these if things work
-                // console.log('MIDI Player: Note On', event.noteName);
+                console.log(
+                    `MIDI Player: Note On - Tick: ${event.tick}, Note: ${event.noteName} (#${event.noteNumber}), Vel: ${event.velocity}, Ch: ${event.channel}`
+                );
+                // Check if velocity is zero or very low!
+                if (event.velocity === 0) {
+                    console.warn(`MIDI Player: Note On with ZERO velocity detected for ${event.noteName}`);
+                }
                 break;
-            // ... other events
+            case "Note off":
+                console.log(
+                    `MIDI Player: Note Off - Tick: ${event.tick}, Note: ${event.noteName} (#${event.noteNumber}), Ch: ${event.channel}`
+                );
+                break;
+
+            // ***** ADD LOGGING FOR INSTRUMENT CHANGES *****
+            case "Program Change":
+                console.log(
+                    `MIDI Player: Program Change - Tick: ${event.tick}, Ch: ${event.channel}, Instrument: ${event.value}`
+                );
+                // This tells you which instrument ID the player is trying to load for a channel
+                break;
+
+            // You might also log other events like Tempo, Time Signature if debugging timing
+            case "Set Tempo":
+                console.log(`MIDI Player: Set Tempo - Tick: ${event.tick}, Value: ${event.data} bpm`);
+                break;
+
             default:
+                // console.log('MIDI Event:', event.name); // Log other event names if needed
                 break;
         }
-    }, []);
+    }, []); // Dependencies are correct
 
     // --- Effect for Initializing/Resetting Player (Minor Tweak Attempt) ---
     useEffect(() => {
@@ -129,20 +156,21 @@ const MidiPlayerComponent = () => {
         reader.onload = (e) => {
             try {
                 console.log("MIDI Player: FileReader onload - initializing MidiPlayer...");
-                const ac = getAudioContext(); // Get context FIRST
+                const ac = getAudioContext();
                 if (!ac) {
                     throw new Error("AudioContext not available for MIDI Player");
                 }
 
-                // Explicitly pass the AudioContext if the library supports it
-                // Looking at midi-player-js source, it DOES look for options.audioContext
-                // and options.soundfont (the Soundfont object itself)
                 const newPlayer = new MidiPlayer.Player(playerEventHandler, {
-                    // ***** TRY PASSING THESE OPTIONS *****
                     audioContext: ac,
                     soundfont: Soundfont, // Pass the imported Soundfont object
+                    // ***** TRY FORCING FluidR3_GM *****
+                    // Note: The URL must point to the *directory* containing instrument JS files.
+                    soundFontUrl: "https://raw.githubusercontent.com/gleitz/midi-js-soundfonts/gh-pages/FluidR3_GM/",
                 });
-                console.log("MIDI Player: Instance created with AudioContext and Soundfont object.");
+                console.log(
+                    "MIDI Player: Instance created with AudioContext, Soundfont object, and FluidR3_GM SoundFontUrl."
+                );
 
                 // Load the ArrayBuffer AFTER creating the player instance
                 newPlayer.loadArrayBuffer(e.target.result);
@@ -156,7 +184,7 @@ const MidiPlayerComponent = () => {
                 setError(`Error initializing player: ${err?.message || err}`);
                 setPlayer(null);
             } finally {
-                setIsLoading(false); // Ensure loading state is always reset
+                setIsLoading(false);
             }
         };
 
@@ -171,6 +199,7 @@ const MidiPlayerComponent = () => {
         reader.readAsArrayBuffer(midiFile);
 
         return cleanup;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [midiFile, playerEventHandler]); // Dependencies are correct
 
     // --- File Input Handler (Keep as is) ---
