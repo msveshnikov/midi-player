@@ -282,12 +282,12 @@ const MidiPlayerComponent = () => {
             // Handles MIDI "Note off" event (Optional, Soundfont often handles decay)
             stopNote: (noteName, channel) => {
                 // Implement if explicit stopping is required (e.g., for sustain pedal or long notes)
-                // const noteId = `${channel}-${noteName}`;
-                // if (activeNotesRef.current[noteId]) {
-                //     activeNotesRef.current[noteId].stop();
-                //     delete activeNotesRef.current[noteId];
-                //     console.log(`Stopped: ${noteName} (Ch: ${channel})`);
-                // }
+                const noteId = `${channel}-${noteName}`;
+                if (activeNotesRef.current[noteId]) {
+                    activeNotesRef.current[noteId].stop();
+                    delete activeNotesRef.current[noteId];
+                    console.log(`Stopped: ${noteName} (Ch: ${channel})`);
+                }
             },
 
             // Handles MIDI "Program Change" event
@@ -351,12 +351,12 @@ const MidiPlayerComponent = () => {
                 // activeNotesRef.current = {};
                 break;
             // Add cases for other events if needed (Pitch Bend, Control Change, etc.)
-            // case 'Pitch Bend':
-            //     soundfontOutputRef.current.pitchBend(event.channel, event.value);
-            //     break;
-            // case 'Controller Change': // or specific CC events
-            //     soundfontOutputRef.current.controlChange(event.channel, event.controllerNumber, event.value);
-            //     break;
+            case 'Pitch Bend':
+                soundfontOutputRef.current.pitchBend(event.channel, event.value);
+                break;
+            case 'Controller Change': // or specific CC events
+                soundfontOutputRef.current.controlChange(event.channel, event.controllerNumber, event.value);
+                break;
             default:
                 // Log other events for debugging
                 // console.log(`Unhandled MIDI Event: ${event.name}`, event);
@@ -455,6 +455,7 @@ const MidiPlayerComponent = () => {
         // Return the cleanup function to be executed when the component unmounts
         // or when midiFile changes (triggering the effect again)
         return cleanup;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [midiFile, midiEventHandler, createSoundfontOutput]); // Dependencies: effect runs if these change
 
     // --- File Input Handler ---
