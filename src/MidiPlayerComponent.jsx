@@ -183,7 +183,6 @@ const MidiPlayerComponent = () => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLoading, setIsLoading] = useState(false); // Combined loading state
     const [error, setError] = useState("");
-    const [isSoundfontTestLoading, setIsSoundfontTestLoading] = useState(false);
 
     // --- Refs ---
     // Use refs for mutable objects that don't trigger re-renders but need persistence
@@ -545,69 +544,16 @@ const MidiPlayerComponent = () => {
         }
     };
 
-    // --- Direct Soundfont Test Function ---
-    const handleTestSoundfont = async () => {
-        setError("");
-        setIsSoundfontTestLoading(true);
-        console.log("[Soundfont Test] Starting...");
-        try {
-            const ac = await resumeAudioContext();
-            if (!ac) {
-                throw new Error("AudioContext could not be initialized for test.");
-            }
-            console.log(`[Soundfont Test] Using AudioContext state: ${ac.state}`);
-
-            // Load piano using our cached loader
-            const piano = await loadInstrument("acoustic_grand_piano");
-            if (!piano) throw new Error("Failed to load piano for test.");
-
-            console.log("[Soundfont Test] Playing test note (C4)...");
-            piano.play("C4"); // Play C4 immediately
-
-            // Optional: Play another note after a delay
-            setTimeout(async () => {
-                try {
-                    const violin = await loadInstrument("violin");
-                    if (violin) {
-                        console.log("[Soundfont Test] Playing test note (G4 - Violin)...");
-                        violin.play("G4");
-                    } else {
-                        console.warn("[Soundfont Test] Violin not loaded, skipping second note.");
-                    }
-                } catch (err) {
-                    console.error("[Soundfont Test] Error loading/playing second note:", err);
-                } finally {
-                    setIsSoundfontTestLoading(false);
-                    console.log("[Soundfont Test] Test complete.");
-                }
-            }, 800);
-        } catch (err) {
-            console.error("[Soundfont Test] Error:", err);
-            setError(`Soundfont test error: ${err?.message || err}`);
-            setIsSoundfontTestLoading(false);
-        }
-        // Don't set loading false immediately if using setTimeout
-        // setIsSoundfontTestLoading(false); // Moved inside setTimeout's finally block
-    };
-
     // --- Render Component ---
     return (
         <div style={styles.container}>
             <h2 style={styles.title}>React MIDI Player (Multi-Instrument)</h2>
 
-            <button
-                onClick={handleTestSoundfont}
-                disabled={isLoading || isSoundfontTestLoading}
-                style={{ ...styles.button, ...styles.testButton }}
-            >
-                {isSoundfontTestLoading ? "Testing Soundfont..." : "Test Soundfont (Piano C4, Violin G4)"}
-            </button>
-
             <input
                 type="file"
                 accept=".mid,.midi,audio/midi,audio/mid,audio/x-midi"
                 onChange={handleFileChange}
-                disabled={isLoading || isSoundfontTestLoading} // Disable while loading MIDI or testing soundfont
+                disabled={isLoading} // Disable while loading MIDI or testing soundfont
                 style={styles.input}
             />
 
