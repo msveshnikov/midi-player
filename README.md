@@ -50,8 +50,9 @@ The primary goal is to offer a simple way for developers to add MIDI playback ca
 
 ## 4. Project Structure
 
-The project follows a typical Vite + React setup:
+The project follows a typical Vite + React setup
 
 # TODO
 
 -   make it look nicer
+-   fix playback - process all events
