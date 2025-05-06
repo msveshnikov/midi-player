@@ -26,3 +26,4 @@ The primary goal is to offer a simple way for developers to add MIDI playback ca
 
 -   make it look nicer
 -   fix playback - process all events and stop notes when needed (they are not stopped)
+-   add visualization (maybe using canvas or svg)
